@@ -23,16 +23,43 @@ instance Eq Lambda where
         eq _ _ _ = False
 
 -- 1.1.
+
+
+addIfNew :: String -> [String] -> [String]
+addIfNew xs x = case elem xs x of
+    True -> x
+    False -> xs : x
+addAll ::[String] -> [String] -> [String]
+addAll x acc = case x of
+    [] -> acc
+    (xs:x) -> addAll x (addIfNew xs acc)
+
 vars :: Lambda -> [String]
 vars expr = case expr of
     Var x -> [x]
-    App e1 e2 -> vars e1 ++ vars e2
-    Abs x e -> [x] ++ vars e
+    App e1 e2 -> addAll (vars e1) (vars e2)
+    Abs x e -> addIfNew x (vars e)
     Macro _ -> []
+--vars expr = nub(case expr of
+--    Var x -> [x]
+--    App e1 e2 -> vars e1 ++ vars e2
+--    Abs x e -> [x] ++ vars e
+--    Macro _ -> []) -- nub removes reoccuring elements as 2 not have dups.
 
--- 1.2.x  
+-- 1.2.x
+removeFromList :: String -> [String] -> [String]
+removeFromList element lista = case lista of
+    [] -> []
+    (e:rest) -> case e == element of
+        True -> removeFromList element rest
+        False -> e : removeFromList element rest
+
 freeVars :: Lambda -> [String]
-freeVars expr = undefined
+freeVars expr = case expr of
+    Var x -> [x]
+    App e1 e2 -> addAll (freeVars e1) (freeVars e2)
+    Abs x e -> removeFromList x (freeVars e)
+    Macro _ -> []
 -- freeVars (Var x) = [x]
 -- vars (App e1 e2) = 
 -- vars (Abs x e) = [x]
