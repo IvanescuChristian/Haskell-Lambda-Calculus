@@ -62,10 +62,20 @@ freeVars expr = case expr of
     Macro _ -> []
 
 -- 1.3.
+stringsOfLen :: Int -> [String]
+stringsOfLen 1 = [[c] | c <- ['a'..'z']]
+stringsOfLen n = [c:s | c <- ['a'..'z'], s <- stringsOfLen (n-1)]
+
+allCandidates :: Int -> [String]
+allCandidates n = stringsOfLen n ++ allCandidates (n + 1)
+
+findFirst :: [String] -> [String] -> String
+findFirst taken (x:xs) = case elem x taken of
+    True  -> findFirst taken xs
+    False -> x
+
 newVar :: [String] -> String
-newVar string = case string of
-    [] -> []
-    (xs : x) -> xs.map()
+newVar taken = findFirst taken (allCandidates 1)
 
 -- 1.4.
 isNormalForm :: Lambda -> Bool
