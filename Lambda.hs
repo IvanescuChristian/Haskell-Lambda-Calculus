@@ -50,9 +50,9 @@ vars expr = case expr of
 removeFromList :: String -> [String] -> [String]
 removeFromList element lista = case lista of
     [] -> []
-    (e:rest) -> case e == element of
-        True -> removeFromList element rest
-        False -> e : removeFromList element rest
+    (xs:x) -> case xs == element of
+        True -> removeFromList element x
+        False -> xs : removeFromList element x
 
 freeVars :: Lambda -> [String]
 freeVars expr = case expr of
@@ -60,14 +60,12 @@ freeVars expr = case expr of
     App e1 e2 -> addAll (freeVars e1) (freeVars e2)
     Abs x e -> removeFromList x (freeVars e)
     Macro _ -> []
--- freeVars (Var x) = [x]
--- vars (App e1 e2) = 
--- vars (Abs x e) = [x]
--- vars (Macro x) = [x]  
 
 -- 1.3.
 newVar :: [String] -> String
-newVar = undefined
+newVar string = case string of
+    [] -> []
+    (xs : x) -> xs.map()
 
 -- 1.4.
 isNormalForm :: Lambda -> Bool
