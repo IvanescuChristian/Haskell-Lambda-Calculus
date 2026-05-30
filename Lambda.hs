@@ -79,23 +79,58 @@ newVar taken = findFirst taken (allCandidates 1)
 
 -- 1.4.
 isNormalForm :: Lambda -> Bool
-isNormalForm = undefined
+isNormalForm expr = case expr of
+    Var _           -> True
+    Macro _         -> True
+    Abs _ e         -> isNormalForm e
+    App (Abs _ _) _ -> False
+    App e1 e2       -> isNormalForm e1 && isNormalForm e2
 
 -- 1.5.
 reduce :: String -> Lambda -> Lambda -> Lambda
-reduce = undefined
+reduce x e1 e2 = case e1 of
+    Var y -> case y == x of
+        True  -> e2
+        False -> Var y
+    App f1 f2 -> App (reduce x f1 e2) (reduce x f2 e2)
+    Macro m -> Macro m
+    Abs y body -> case y == x of
+        True  -> Abs y body
+        False -> case elem y (freeVars e2) of
+            False -> Abs y (reduce x body e2)
+            True  ->
+                let freshName   = newVar (vars e1 ++ vars e2)
+                    renamedBody = reduce y body (Var freshName)
+                in Abs freshName (reduce x renamedBody e2)
 
 -- 1.6.
 normalStep :: Lambda -> Lambda
-normalStep = undefined
+normalStep expr = case expr of
+    App (Abs x e1) e2 -> reduce x e1 e2
+    App e1 e2 -> case isNormalForm e1 of
+        False -> App (normalStep e1) e2
+        True  -> App e1 (normalStep e2)
+    Abs x e -> Abs x (normalStep e)
+    _ -> expr
 
 -- 1.7.
 applicativeStep :: Lambda -> Lambda
-applicativeStep = undefined
+applicativeStep expr = case expr of
+    App e1 e2 -> case isNormalForm e1 of
+        False -> App (applicativeStep e1) e2
+        True  -> case isNormalForm e2 of
+            False -> App e1 (applicativeStep e2)
+            True  -> case e1 of
+                Abs x body -> reduce x body e2
+                _          -> expr
+    Abs x e -> Abs x (applicativeStep e)
+    _ -> expr
 
 -- 1.8.
 simplify :: (Lambda -> Lambda) -> Lambda -> [Lambda]
-simplify = undefined
+simplify stepFn expr = case isNormalForm expr of
+    True  -> [expr]
+    False -> expr : simplify stepFn (stepFn expr)
 
 normal :: Lambda -> [Lambda]
 normal = simplify normalStep
