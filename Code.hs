@@ -18,14 +18,14 @@ expandMacros ctx expr = case expr of
     Macro m   -> case lookup m ctx of
         Nothing -> Left ("Undefined macro: " ++ m)
         Just e  -> Right e
+    Abs x e   -> case expandMacros ctx e of
+        Left err -> Left err
+        Right ex -> Right (Abs x ex)
     App e1 e2 -> case expandMacros ctx e1 of
         Left err  -> Left err
         Right ex1 -> case expandMacros ctx e2 of
             Left err  -> Left err
             Right ex2 -> Right (App ex1 ex2)
-    Abs x e   -> case expandMacros ctx e of
-        Left err -> Left err
-        Right ex -> Right (Abs x ex)
 
 simplifyCtx :: Context -> (Lambda -> Lambda) -> Lambda -> Either String [Lambda]
 simplifyCtx ctx stepFn expr = case expandMacros ctx expr of

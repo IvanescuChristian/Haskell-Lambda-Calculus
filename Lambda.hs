@@ -23,115 +23,107 @@ instance Eq Lambda where
         eq _ _ _ = False
 
 -- 1.1.
-
-
+addAll :: [String] -> [String] -> [String]
+addAll x acc = case x of 
+  [] -> acc
+  (xs : x) -> addAll x (addIfNew xs acc)
 addIfNew :: String -> [String] -> [String]
-addIfNew xs x = case elem xs x of
-    True -> x
-    False -> xs : x
-addAll ::[String] -> [String] -> [String]
-addAll x acc = case x of
-    [] -> acc
-    (xs:x) -> addAll x (addIfNew xs acc)
-
+addIfNew xs e = case e of
+  [] -> [xs]
+  e -> case elem xs e of
+    True-> e
+    False-> xs : e
 vars :: Lambda -> [String]
-vars expr = case expr of
-    Var x -> [x]
-    App e1 e2 -> addAll (vars e1) (vars e2)
-    Abs x e -> addIfNew x (vars e)
-    Macro _ -> []
---vars expr = nub(case expr of
---    Var x -> [x]
---    App e1 e2 -> vars e1 ++ vars e2
---    Abs x e -> [x] ++ vars e
---    Macro _ -> []) -- nub removes reoccuring elements as 2 not have dups.
+vars expr = case expr of 
+  Var x -> [x]
+  Abs x e -> addIfNew x (vars e)
+  App e1 e2 -> addAll (vars e1) (vars e2)
+  Macro _ -> []
 
--- 1.2.x
+-- 1.2.
 removeFromList :: String -> [String] -> [String]
-removeFromList element lista = case lista of
-    [] -> []
-    (xs:x) -> case xs == element of
-        True -> removeFromList element x
-        False -> xs : removeFromList element x
-
+removeFromList item e = case e of
+  [] -> []
+  (element: x) -> case element == item of
+    True-> removeFromList item x
+    False-> element : removeFromList item x
 freeVars :: Lambda -> [String]
-freeVars expr = case expr of
-    Var x -> [x]
-    App e1 e2 -> addAll (freeVars e1) (freeVars e2)
-    Abs x e -> removeFromList x (freeVars e)
-    Macro _ -> []
+freeVars expr = case expr of 
+  Var x -> [x]
+  Abs x e -> removeFromList x (freeVars e)
+  App e1 e2 -> addAll (freeVars e1) (freeVars e2)
+  Macro _ -> []
 
 -- 1.3.
-stringsOfLen :: Int -> [String]
-stringsOfLen 1 = [[c] | c <- ['a'..'z']]
-stringsOfLen n = [c:s | c <- ['a'..'z'], s <- stringsOfLen (n-1)]
+generateStringsOfLenN :: Int -> [String]
+generateStringsOfLenN n = case n of 
+  1 -> [[c] | c <- ['a'..'z']]
+  size -> [c : s | c <- ['a'..'z'], s <- (generateStringsOfLenN (size-1) )]
 
-allCandidates :: Int -> [String]
-allCandidates n = stringsOfLen n ++ allCandidates (n + 1)
+generateAllString :: Int -> [String]
+generateAllString n = (generateStringsOfLenN n) ++ (generateAllString (n+1) )
 
-findFirst :: [String] -> [String] -> String
-findFirst taken (x:xs) = case elem x taken of
-    True  -> findFirst taken xs
-    False -> x
-
+findFirstDifferent :: [String] -> [String] -> String
+findFirstDifferent e1 (element:e2) = case e1 of
+  [] -> element
+  lista -> case elem element e1 of
+    True-> findFirstDifferent e1 e2
+    False-> element
 newVar :: [String] -> String
-newVar taken = findFirst taken (allCandidates 1)
+newVar taken = findFirstDifferent taken (generateAllString 1)
 
 -- 1.4.
 isNormalForm :: Lambda -> Bool
 isNormalForm expr = case expr of
-    Var _           -> True
-    Macro _         -> True
-    Abs _ e         -> isNormalForm e
-    App (Abs _ _) _ -> False
-    App e1 e2       -> isNormalForm e1 && isNormalForm e2
-
+  Var x -> True
+  Macro _ -> True
+  Abs x e -> isNormalForm e
+  App (Abs _ _) _ -> False
+  App e1 e2 -> isNormalForm e1 && isNormalForm e2
 -- 1.5.
 reduce :: String -> Lambda -> Lambda -> Lambda
 reduce x e1 e2 = case e1 of
-    Var y -> case y == x of
-        True  -> e2
-        False -> Var y
-    App f1 f2 -> App (reduce x f1 e2) (reduce x f2 e2)
-    Macro m -> Macro m
-    Abs y body -> case y == x of
-        True  -> Abs y body
-        False -> case elem y (freeVars e2) of
-            False -> Abs y (reduce x body e2)
-            True  ->
-                let freshName   = newVar (vars e1 ++ vars e2)
-                    renamedBody = reduce y body (Var freshName)
-                in Abs freshName (reduce x renamedBody e2)
+  Var y -> case y == x of
+    True -> e2
+    False-> Var y
+  Macro m -> Macro m
+  App f1 f2 -> App (reduce x f1 e2) (reduce x f2 e2)
+  Abs y f1 -> case y == x of
+    True -> Abs y f1
+    False ->
+      let
+        new_var = newVar(freeVars f1 ++ freeVars e2 ++ [x])
+        new_f1 = (reduce y f1 (Var new_var) )
+      in Abs new_var (reduce x new_f1 e2)
 
 -- 1.6.
 normalStep :: Lambda -> Lambda
 normalStep expr = case expr of
-    App (Abs x e1) e2 -> reduce x e1 e2
-    App e1 e2 -> case isNormalForm e1 of
-        False -> App (normalStep e1) e2
-        True  -> App e1 (normalStep e2)
-    Abs x e -> Abs x (normalStep e)
-    _ -> expr
+  Abs x e -> Abs x (normalStep e)
+  App (Abs x e1) e2 -> reduce x e1 e2
+  App e1 e2 -> case isNormalForm e1 of
+    True -> App e1 (normalStep e2)
+    False -> App (normalStep e1) e2
+  _ -> expr
 
 -- 1.7.
 applicativeStep :: Lambda -> Lambda
 applicativeStep expr = case expr of
-    App e1 e2 -> case isNormalForm e1 of
-        False -> App (applicativeStep e1) e2
-        True  -> case isNormalForm e2 of
-            False -> App e1 (applicativeStep e2)
-            True  -> case e1 of
-                Abs x body -> reduce x body e2
-                _          -> expr
-    Abs x e -> Abs x (applicativeStep e)
-    _ -> expr
+  Abs x e -> Abs x (applicativeStep e)
+  App e1 e2 -> case isNormalForm e1 of
+    True -> case isNormalForm e2 of
+      True -> case e1 of
+        Abs x e -> reduce x e e2
+        _ -> expr
+      False -> App e1 (applicativeStep e2)
+    False -> App (applicativeStep e1) e2
+  _ -> expr
 
 -- 1.8.
 simplify :: (Lambda -> Lambda) -> Lambda -> [Lambda]
-simplify stepFn expr = case isNormalForm expr of
-    True  -> [expr]
-    False -> expr : simplify stepFn (stepFn expr)
-
+simplify stepFn e = case (isNormalForm e) of
+  True -> [e]
+  False -> e : simplify stepFn (stepFn e)
 normal :: Lambda -> [Lambda]
 normal = simplify normalStep
 

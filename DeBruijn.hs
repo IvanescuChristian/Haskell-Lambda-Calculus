@@ -4,6 +4,7 @@ import Lambda (Lambda(..))
 
 type Context = [String]
 
+-- la reduce si apelurile lui , e1 e2 se pun e2 e1. 
 data DeBruijn = DBVar Int
               | DBFree String
               | DBApp DeBruijn DeBruijn
@@ -23,91 +24,94 @@ instance Eq DeBruijn where
     _ == _ = False
 
 -- 4.1.
-findIdx :: String -> Context -> Maybe Int
-findIdx _ [] = Nothing
-findIdx x (y:ys) = case x == y of
-    True  -> Just 0
-    False -> case findIdx x ys of
+findIdx :: Context -> String -> Maybe Int
+findIdx [] _ = Nothing
+findIdx (xs:ctx) x = case xs == x of
+    True -> Just 0
+    False -> case findIdx ctx x of
         Nothing -> Nothing
-        Just i  -> Just (i + 1)
-
+        Just i -> Just (i+1)
 toDB :: Context -> Lambda -> DeBruijn
-toDB ctx expr = case expr of
-    Var x     -> case findIdx x ctx of
+toDB ctx e = case e of
+    Macro m -> DBFree m
+    Var x -> case (findIdx ctx x) of
         Nothing -> DBFree x
-        Just i  -> DBVar i
+        Just i -> DBVar i
+    Abs x e -> DBAbs x (toDB (x:ctx) e)
     App e1 e2 -> DBApp (toDB ctx e1) (toDB ctx e2)
-    Abs x e   -> DBAbs x (toDB (x:ctx) e)
-    Macro m   -> DBFree m
-
 -- 4.2.
-fromDB :: Context -> DeBruijn -> Lambda
-fromDB ctx expr = case expr of
-    DBFree x      -> Var x
-    DBVar n       -> Var (ctx !! n)
-    DBApp e1 e2   -> App (fromDB ctx e1) (fromDB ctx e2)
-    DBAbs name e  -> Abs name (fromDB (name:ctx) e)
+findElementIdx :: Context -> Int -> String
+findElementIdx [] _ = "Error"
+findElementIdx (xs:ctx) idx = case idx == 0 of
+    True -> xs
+    False -> findElementIdx ctx (idx-1)
 
+fromDB :: Context -> DeBruijn -> Lambda
+fromDB ctx db = case db of
+    DBFree x -> Var x
+    --DBVar x -> Var (ctx !! x)
+    DBVar idx -> case (findElementIdx ctx idx) of
+        "Error" -> Var "Error"
+        s -> Var s
+    DBAbs x e -> Abs x (fromDB (x:ctx) e)
+    DBApp e1 e2-> App (fromDB ctx e1) (fromDB ctx e2)
 -- 4.3.
 isNormalForm :: DeBruijn -> Bool
-isNormalForm expr = case expr of
-    DBVar _              -> True
-    DBFree _             -> True
-    DBAbs _ e            -> isNormalForm e
-    DBApp (DBAbs _ _) _  -> False
-    DBApp e1 e2          -> isNormalForm e1 && isNormalForm e2
-
+isNormalForm db = case db of
+    DBFree m -> True
+    DBVar x -> True
+    DBAbs x e -> (isNormalForm e)
+    DBApp (DBAbs _ _) _ -> False 
+    DBApp e1 e2 -> (isNormalForm e1) && (isNormalForm e2)
 -- 4.4.
 shiftFrom :: Int -> Int -> DeBruijn -> DeBruijn
-shiftFrom cutoff amount expr = case expr of
-    DBFree x      -> DBFree x
-    DBVar n       -> case n >= cutoff of
-        True  -> DBVar (n + amount)
-        False -> DBVar n
-    DBApp e1 e2   -> DBApp (shiftFrom cutoff amount e1) (shiftFrom cutoff amount e2)
-    DBAbs name e  -> DBAbs name (shiftFrom (cutoff + 1) amount e)
-
+shiftFrom st fi db = case db of
+    DBFree m -> DBFree m
+    DBVar x -> case x >= st of
+        True -> DBVar (x+st)
+        False -> DBVar x
+    DBAbs x e -> DBAbs x (shiftFrom (st+1) fi e)
+    DBApp e1 e2 -> DBApp (shiftFrom st fi e1) (shiftFrom st fi e2)
 reduceAt :: Int -> DeBruijn -> DeBruijn -> DeBruijn
-reduceAt depth val expr = case expr of
-    DBFree x      -> DBFree x
-    DBVar n       -> case compare n depth of
-        LT -> DBVar n
-        EQ -> shiftFrom 0 depth val
-        GT -> DBVar (n - 1)
-    DBApp e1 e2   -> DBApp (reduceAt depth val e1) (reduceAt depth val e2)
-    DBAbs name e  -> DBAbs name (reduceAt (depth + 1) val e)
-
+reduceAt idx db1 db2 = case db1 of
+    DBFree m -> DBFree m
+    DBVar x -> case compare x idx of
+        LT -> DBVar x
+        EQ -> shiftFrom 0 idx db2
+        GT -> DBVar (x-1)
+    DBAbs x e1 -> DBAbs x (reduceAt (idx+1) e1 db2)
+    DBApp e1 e2 -> DBApp (reduceAt idx e1 db2) (reduceAt idx e2 db2)
 reduce :: DeBruijn -> DeBruijn -> DeBruijn
-reduce val expr = reduceAt 0 val expr
-
+reduce db1 db2 = (reduceAt 0 db2 db1) 
+--testul le cheama val expr deci trb sa le dau invers 
 -- 4.5.
 normalStep :: DeBruijn -> DeBruijn
-normalStep expr = case expr of
-    DBApp (DBAbs _ body) arg -> reduce arg body
-    DBApp e1 e2 -> case isNormalForm e1 of
+normalStep db = case db of
+    DBAbs x e -> DBAbs x (normalStep e)
+    DBApp (DBAbs _ e1) e2 -> (reduce e2 e1) --orice apel de reduce are argumentele inversate
+    DBApp e1 e2 -> case (isNormalForm e1) of
+        True -> DBApp e1 (normalStep e2)
         False -> DBApp (normalStep e1) e2
-        True  -> DBApp e1 (normalStep e2)
-    DBAbs name e -> DBAbs name (normalStep e)
-    _ -> expr
+    _ -> db
 
 -- 4.6.
 applicativeStep :: DeBruijn -> DeBruijn
-applicativeStep expr = case expr of
-    DBApp e1 e2 -> case isNormalForm e1 of
+applicativeStep db = case db of
+    DBAbs x e -> DBAbs x (applicativeStep e)
+    DBApp e1 e2 -> case (isNormalForm e1) of
+        True -> case (isNormalForm e2) of
+            True ->case e1 of
+                DBAbs y f1 -> reduce e2 f1
+                _ -> db
+            False ->DBApp e1 (applicativeStep e2)
         False -> DBApp (applicativeStep e1) e2
-        True  -> case isNormalForm e2 of
-            False -> DBApp e1 (applicativeStep e2)
-            True  -> case e1 of
-                DBAbs _ body -> reduce e2 body
-                _            -> expr
-    DBAbs name e -> DBAbs name (applicativeStep e)
-    _ -> expr
+    _ -> db
 
 -- 4.7.
 simplify :: (DeBruijn -> DeBruijn) -> DeBruijn -> [DeBruijn]
-simplify stepFn expr = case isNormalForm expr of
-    True  -> [expr]
-    False -> expr : simplify stepFn (stepFn expr)
+simplify stepFn db = case isNormalForm db of
+    True -> [db]
+    False -> db : simplify stepFn (stepFn db)
 
 normal :: DeBruijn -> [DeBruijn]
 normal = simplify normalStep
